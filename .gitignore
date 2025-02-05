@@ -1,5 +1,6 @@
 # env files (can opt-in for committing if needed)
 .env*
+.env.*
 
 # npm
 node_modules
@@ -17,3 +18,5 @@ benchmarks/graphs
 
 # ignore additional files using core.excludesFile
 # https://git-scm.com/docs/gitignore
+
+temp_upload/*.webm
