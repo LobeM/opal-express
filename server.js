@@ -6,8 +6,17 @@ const cors = require('cors');
 const { Readable } = require('stream');
 const axios = require('axios');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
-
+const OpenAI = require('openai');
 require('dotenv').config();
+
+const app = express();
+const server = http.createServer(app);
+
+app.use(cors());
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 const s3 = new S3Client({
   region: process.env.AWS_REGION,
@@ -16,11 +25,6 @@ const s3 = new S3Client({
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
   },
 });
-
-const app = express();
-const server = http.createServer(app);
-
-app.use(cors());
 
 const io = new Server(server, {
   cors: {
@@ -70,6 +74,66 @@ io.on('connection', (socket) => {
       });
 
       const fileStatus = await s3.send(command);
+
+      if (fileStatus['$metadata'].httpStatusCode === 200) {
+        console.log('🟢 Video uploaded to AWS');
+
+        if (processing.data.plan === 'PRO') {
+          fs.stat('temp_upload/' + data.filename, async (err, stats) => {
+            if (!err) {
+              if (stats.size < 25000000) {
+                const transcription = await openai.audio.transcriptions.create({
+                  file: fs.createReadStream(`temp_upload/${data.filename}`),
+                  model: 'whisper-1',
+                  response_format: 'text',
+                });
+
+                if (transcription) {
+                  const completion = await openai.chat.completions.create({
+                    model: 'gpt-3.5-turbo',
+                    response_format: { type: 'json_object' },
+                    messages: [
+                      {
+                        role: 'system',
+                        content: `You are going to generate a title and a nice description using the speech to text transcription provided: transcription(${transcription}) and then return it in json format as  {"title": <the title you gave>, "summery": <the summary you created>}`,
+                      },
+                    ],
+                  });
+
+                  const titleAndSummeryGenerated = await axios.post(
+                    `${process.env.NEXT_API_HOST}recording/${data.userId}/transcribe`,
+                    {
+                      filename: data.filename,
+                      content: completion.choices[0].message.content,
+                      transcript: transcription,
+                    }
+                  );
+
+                  if (titleAndSummeryGenerated.data.status !== 200)
+                    return console.log(
+                      '🔴 Error: Something went wrong with creating the title and description'
+                    );
+                }
+              }
+            }
+          });
+        }
+        const stopProcessing = await axios.post(
+          `${process.env.NEXT_API_HOST}recording/${data.userId}/complete`,
+          { filename: data.filename }
+        );
+        if (stopProcessing.data.status !== 200)
+          return console.log(
+            '🔴 Error: Something went wrong with stopping the processing'
+          );
+        if (stopProcessing.status === 200) {
+          fs.unlink('temp_upload/' + data.filename, (err) => {
+            if (!err) console.log(data.filename + ' 🟢 deleted successfully');
+          });
+        }
+      } else {
+        console.log('🔴 Error: Upload failed! Process aborted');
+      }
     });
   });
 
