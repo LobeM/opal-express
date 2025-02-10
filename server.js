@@ -95,12 +95,12 @@ io.on('connection', (socket) => {
                     messages: [
                       {
                         role: 'system',
-                        content: `You are going to generate a title and a nice description using the speech to text transcription provided: transcription(${transcription}) and then return it in json format as  {"title": <the title you gave>, "summery": <the summary you created>}`,
+                        content: `You are going to generate a title and a nice description using the speech to text transcription provided: transcription(${transcription}) and then return it in json format as  {"title": <the title you gave>, "summary": <the summary you created>}`,
                       },
                     ],
                   });
 
-                  const titleAndSummeryGenerated = await axios.post(
+                  const titleAndSummaryGenerated = await axios.post(
                     `${process.env.NEXT_API_HOST}recording/${data.userId}/transcribe`,
                     {
                       filename: data.filename,
@@ -109,7 +109,7 @@ io.on('connection', (socket) => {
                     }
                   );
 
-                  if (titleAndSummeryGenerated.data.status !== 200)
+                  if (titleAndSummaryGenerated.data.status !== 200)
                     return console.log(
                       '🔴 Error: Something went wrong with creating the title and description'
                     );
