@@ -36,25 +36,29 @@ const io = new Server(server, {
 let recordedChunks = [];
 
 io.on('connection', (socket) => {
+  let socketChunks = [];
+
   console.log('🟢 Socket is connected');
   socket.on('video-chunks', async (data) => {
     console.log('🟢 Video chunks is sent');
-    const writestream = fs.createWriteStream('temp_upload/' + data.filename);
-    recordedChunks.push(data.chunks);
-    const videoBlob = new Blob(recordedChunks, {
-      type: 'video/webm; codecs=vp9',
-    });
-    const buffer = Buffer.from(await videoBlob.arrayBuffer());
-    const readStream = Readable.from(buffer);
-    readStream.pipe(writestream).on('finish', () => {
-      console.log('🟢 Chunk Saved');
-    });
+    socketChunks.push(data.chunks);
+    console.log('Chunk size:', data.chunks.length);
   });
 
   socket.on('process-video', async (data) => {
     console.log('🟢 Processing video...');
-    recordedChunks = [];
-    fs.readFile('temp_upload/' + data.filename, async (err, file) => {
+
+    const videoBuffer = Buffer.concat(socketChunks);
+    console.log('Total video size:', videoBuffer.length);
+
+    socketChunks = [];
+
+    fs.writeFile('temp_upload/' + data.filename, videoBuffer, async (err) => {
+      if (err) {
+        console.error('Error saving file:', err);
+        return;
+      }
+
       const processing = await axios.post(
         `${process.env.NEXT_API_HOST}recording/${data.userId}/processing`,
         { filename: data.filename }
@@ -70,7 +74,7 @@ io.on('connection', (socket) => {
       const command = new PutObjectCommand({
         Bucket,
         Key,
-        Body: file,
+        Body: videoBuffer,
         ContentType,
       });
 
